@@ -1,5 +1,5 @@
 {
-  "name": "Copy of ProspectoFlow",
+  "name": "ProspectoFlow",
   "description": "Semi-automated prospecting tool for Instagram leads using Next.js and Vercel Postgres.",
   "requestFramePermissions": []
 }

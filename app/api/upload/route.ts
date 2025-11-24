@@ -22,30 +22,44 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as RawLead[];
 
-    if (!Array.isArray(body) || body.length === 0) {
+    if (!Array.isArray(body)) {
       return NextResponse.json(
         { error: 'Dados inválidos. Esperado um array de leads.' },
         { status: 400 }
       );
     }
 
-    // Validação simples e mapeamento para garantir campos
-    const leadsToInsert = body.map((item) => ({
-      name: String(item.name || item.Nome || 'Desconhecido'),
-      username: String(item.username || item.Username || item.usuario || ''),
-      phone: String(item.phone || item.telefone || item.celular || ''),
-      bio: String(item.bio || ''),
-      origin: String(item.origin || item.origem || 'Upload CSV'),
-    })).filter(l => l.phone && l.username && l.phone !== 'undefined' && l.username !== 'undefined');
-
-    if (leadsToInsert.length === 0) {
+    if (body.length === 0) {
       return NextResponse.json(
-        { error: 'Nenhum lead válido encontrado (necessário telefone e username).' },
+        { error: 'A lista está vazia.' },
         { status: 400 }
       );
     }
 
-    // Inserção em massa
+    // Validação simples e normalização
+    const leadsToInsert = body.map((item) => {
+      // Tenta encontrar o telefone em várias chaves comuns
+      const rawPhone = item.phone || item.telefone || item.celular || item.Phone || '';
+      const cleanPhone = String(rawPhone).replace(/\D/g, ''); // Remove tudo que não for número
+
+      return {
+        name: String(item.name || item.Nome || item.Name || 'Desconhecido').trim(),
+        username: String(item.username || item.Username || item.usuario || item['User Name'] || '').replace('@', '').trim(),
+        phone: cleanPhone,
+        bio: String(item.bio || item.Bio || '').trim().substring(0, 500), // Limita tamanho da bio
+        origin: String(item.origin || item.origem || 'Upload CSV').trim(),
+      };
+    }).filter(l => l.phone.length >= 8 && l.username.length > 0); 
+    // Filtra apenas leads que tenham um telefone minimamente válido e um username
+
+    if (leadsToInsert.length === 0) {
+      return NextResponse.json(
+        { error: 'Nenhum lead válido encontrado. Verifique se o CSV possui colunas de telefone e usuário.' },
+        { status: 400 }
+      );
+    }
+
+    // Inserção em massa (Limitando a 1000 por vez se necessário futuramente, mas Drizzle lida bem com batches razoáveis)
     const result = await db.insert(leads).values(leadsToInsert).returning();
 
     return NextResponse.json({ 
@@ -57,7 +71,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Erro ao salvar leads:', error);
     return NextResponse.json(
-      { error: 'Erro interno no servidor ao processar leads.' },
+      { error: 'Erro interno no servidor ao processar leads. Verifique a conexão com o banco.' },
       { status: 500 }
     );
   }
