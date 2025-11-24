@@ -6,13 +6,17 @@ import { leads } from '@/db/schema';
 interface RawLead {
   name?: string;
   Nome?: string;
+  Name?: string;
   username?: string;
   Username?: string;
   usuario?: string;
+  'User Name'?: string;
   phone?: string | number;
   telefone?: string | number;
   celular?: string | number;
+  Phone?: string;
   bio?: string;
+  Bio?: string;
   origin?: string;
   origem?: string;
   [key: string]: any;
@@ -36,15 +40,28 @@ export async function POST(request: Request) {
       );
     }
 
+    // Limite de segurança para Serverless Functions (evitar timeout em listas gigantes)
+    if (body.length > 2000) {
+       return NextResponse.json(
+        { error: 'A lista é muito grande. Por favor, envie no máximo 2000 contatos por vez.' },
+        { status: 413 }
+      );
+    }
+
     // Validação simples e normalização
     const leadsToInsert = body.map((item) => {
       // Tenta encontrar o telefone em várias chaves comuns
       const rawPhone = item.phone || item.telefone || item.celular || item.Phone || '';
-      const cleanPhone = String(rawPhone).replace(/\D/g, ''); // Remove tudo que não for número
+      // Remove tudo que não for número
+      const cleanPhone = String(rawPhone).replace(/\D/g, ''); 
+
+      // Normaliza o username (remove @ e espaços)
+      const rawUsername = item.username || item.Username || item.usuario || item['User Name'] || '';
+      const cleanUsername = String(rawUsername).replace('@', '').trim();
 
       return {
-        name: String(item.name || item.Nome || item.Name || 'Desconhecido').trim(),
-        username: String(item.username || item.Username || item.usuario || item['User Name'] || '').replace('@', '').trim(),
+        name: String(item.name || item.Nome || item.Name || cleanUsername || 'Desconhecido').trim(),
+        username: cleanUsername,
         phone: cleanPhone,
         bio: String(item.bio || item.Bio || '').trim().substring(0, 500), // Limita tamanho da bio
         origin: String(item.origin || item.origem || 'Upload CSV').trim(),
@@ -59,7 +76,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Inserção em massa (Limitando a 1000 por vez se necessário futuramente, mas Drizzle lida bem com batches razoáveis)
+    // Inserção no banco
     const result = await db.insert(leads).values(leadsToInsert).returning();
 
     return NextResponse.json({ 
@@ -71,7 +88,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Erro ao salvar leads:', error);
     return NextResponse.json(
-      { error: 'Erro interno no servidor ao processar leads. Verifique a conexão com o banco.' },
+      { error: 'Erro interno no servidor ao processar leads. Verifique se a tabela existe ou se os dados estão corretos.' },
       { status: 500 }
     );
   }
